@@ -128,7 +128,7 @@ modules:
 
   function:
     - key: resolver
-      handler: resolvers.index.handler
+      handler: index.handler
     - key: gatherIssueContext
       handler: actions.gatherIssueContext
     - key: gatherPageContext
