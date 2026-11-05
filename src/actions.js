@@ -1,167 +1,149 @@
-import api, { route } from '@forge/api';
-import { assembleBriefFromInputs } from './lib/brief.js';
-
-function excerptText(value, max = 400) {
-  if (!value) return '';
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  const cleaned = text.replace(/\s+/g, ' ').trim();
-  return cleaned.length > max ? `${cleaned.slice(0, max)}…` : cleaned;
-}
+import { fetchIssueContext, searchConfluencePages } from './lib/atlassian.js';
+import { agentIssueMessage, agentPagesMessage, assembleBriefFromInputs } from './lib/brief.js';
+import { normalizeSpaceKey, parseBriefContext, readInput, readIssueKeyFromPayload } from './lib/text.js';
 
 /**
- * Rovo action: gather Jira issue context for a meeting brief.
+ * Rovo action: read a real Jira work item.
+ * Uses the app user first (Rovo actions are not UI Kit modules). Falls back to the
+ * current user inside fetchIssueContext. On failure the payload says what failed.
  */
 export async function gatherIssueContext(payload) {
-  const issueKey = payload?.issueKey || payload?.inputs?.issueKey;
+  const issueKey = readIssueKeyFromPayload(payload);
   if (!issueKey) {
-    return { status: 'error', error: 'issueKey is required' };
-  }
-
-  try {
-    const response = await api
-      .asUser()
-      .requestJira(
-        route`/rest/api/3/issue/${issueKey}?fields=summary,status,description,comment`,
-        { headers: { Accept: 'application/json' } }
-      );
-
-    if (!response.ok) {
-      const body = await response.text();
-      return {
-        status: 'error',
-        error: `Jira API ${response.status}: ${excerptText(body, 200)}`,
-      };
-    }
-
-    const data = await response.json();
-    const fields = data.fields || {};
-    const comments = (fields.comment?.comments || [])
-      .slice(-3)
-      .map((c) => excerptText(c.body?.content ? JSON.stringify(c.body) : c.body, 160));
-
-    const context = {
-      key: data.key,
-      summary: fields.summary || '',
-      status: fields.status?.name || '',
-      descriptionExcerpt: excerptText(
-        typeof fields.description === 'string'
-          ? fields.description
-          : JSON.stringify(fields.description || ''),
-        500
-      ),
-      comments,
-      url: data.self || '',
-    };
-
     return {
-      status: 'success',
-      issueContext: context,
-      message: `Loaded ${context.key}: ${context.summary}`,
-      // Teamwork Graph hook (Preview): call api.asUser().requestTeamworkGraph(...) once allowlisted.
-      teamworkGraph: {
-        status: 'stub',
-        note: 'Scopes read:graph:jira / read:graph:confluence are declared. Wire requestTeamworkGraph after allowlist.',
-      },
+      status: 'error',
+      issueContext: null,
+      error: 'Pass an issue key such as PROJ-123.',
+      message:
+        'No Jira issue key was provided. Ask for a key like PROJ-123. Do not invent a summary, status, or URL.',
     };
-  } catch (error) {
-    console.error('gatherIssueContext failed', error);
-    return { status: 'error', error: 'Failed to gather Jira issue context.' };
-  }
-}
-
-/**
- * Rovo action: search Confluence for related pages.
- */
-export async function gatherPageContext(payload) {
-  const query = payload?.query || payload?.inputs?.query;
-  const spaceKey = payload?.spaceKey || payload?.inputs?.spaceKey;
-  if (!query) {
-    return { status: 'error', error: 'query is required' };
   }
 
   try {
-    let cql = `type=page AND text ~ "${String(query).replace(/"/g, '\\"')}"`;
-    if (spaceKey) {
-      cql = `space="${String(spaceKey).replace(/"/g, '')}" AND ${cql}`;
-    }
-
-    const response = await api
-      .asUser()
-      .requestConfluence(
-        route`/wiki/rest/api/content/search?cql=${cql}&limit=5&expand=body.view,space`,
-        { headers: { Accept: 'application/json' } }
-      );
-
-    if (!response.ok) {
-      // Soft-fail so the agent can still assemble a template brief.
-      const body = await response.text();
+    const fetched = await fetchIssueContext(issueKey, { auth: 'app' });
+    if (!fetched.ok) {
       return {
         status: 'partial',
-        pages: [],
-        error: `Confluence search ${response.status}: ${excerptText(body, 200)}`,
-        message: 'No Confluence pages returned; continue with issue context only.',
+        issueContext: null,
+        error: fetched.message,
+        message: `Could not read ${issueKey}. ${fetched.message} Do not invent fields.`,
       };
     }
-
-    const data = await response.json();
-    const pages = (data.results || []).map((page) => ({
-      id: page.id,
-      title: page.title,
-      spaceKey: page.space?.key,
-      excerpt: excerptText(page.body?.view?.value?.replace(/<[^>]+>/g, ' ') || '', 280),
-      url: page._links?.webui
-        ? page._links.webui
-        : page._links?.self || '',
-    }));
-
     return {
       status: 'success',
-      pageContext: { query, spaceKey: spaceKey || null, pages },
-      message: `Found ${pages.length} Confluence page(s) for "${query}"`,
-      teamworkGraph: {
-        status: 'stub',
-        note: 'Use Teamwork Graph curated queries to traverse page ↔ issue links when allowlisted.',
-      },
+      issueContext: fetched.issue,
+      message: agentIssueMessage(fetched.issue),
     };
   } catch (error) {
-    console.error('gatherPageContext failed', error);
-    return { status: 'error', error: 'Failed to gather Confluence page context.' };
+    console.error('gatherIssueContext failed', error?.message || error);
+    return {
+      status: 'error',
+      issueContext: null,
+      error: 'Jira request failed before a response arrived.',
+      message: `Could not read ${issueKey}. The Jira request failed. Do not invent fields.`,
+    };
   }
 }
 
 /**
- * Rovo action: format gathered context into a MeetBrief one-pager.
+ * Rovo action: search Confluence pages. Empty and failed searches stay explicit.
  */
-export async function assembleBrief(payload) {
-  const subject = payload?.subject || payload?.inputs?.subject;
-  if (!subject) {
-    return { status: 'error', error: 'subject is required' };
+export async function gatherPageContext(payload) {
+  const query = String(readInput(payload, 'query') || payload?.context?.confluence?.title || '').trim();
+  const rawSpace = String(readInput(payload, 'spaceKey') || payload?.context?.confluence?.spaceKey || '').trim();
+  const spaceKey = normalizeSpaceKey(rawSpace);
+  const spaceNote =
+    rawSpace && !spaceKey ? ' Space key was ignored because it was not a Confluence space key.' : '';
+  if (!query) {
+    return {
+      status: 'error',
+      pageContext: { query: '', pages: [] },
+      error: 'query is required',
+      message: 'No Confluence query was provided. Ask for a topic or page title. Do not invent pages.',
+    };
   }
 
+  try {
+    const searched = await searchConfluencePages(query, spaceKey, { auth: 'app' });
+    if (!searched.ok) {
+      const pageContext = { query, spaceKey: spaceKey || null, pages: [], error: searched.message };
+      return {
+        status: 'partial',
+        pageContext,
+        error: searched.message,
+        message: `${searched.message} Continue without Confluence pages. Do not invent titles or URLs.${spaceNote}`,
+      };
+    }
+    const pageContext = { query: searched.query, spaceKey: searched.spaceKey, pages: searched.pages };
+    return {
+      status: searched.pages.length ? 'success' : 'partial',
+      pageContext,
+      message: `${agentPagesMessage(pageContext)}${spaceNote}`,
+    };
+  } catch (error) {
+    console.error('gatherPageContext failed', error?.message || error);
+    return {
+      status: 'error',
+      pageContext: { query, spaceKey: spaceKey || null, pages: [] },
+      error: 'Confluence request failed before a response arrived.',
+      message: 'Confluence search failed. Continue without pages. Do not invent titles or URLs.',
+    };
+  }
+}
+
+/**
+ * Rovo action: format whatever the gather actions actually returned.
+ * A missing or invalid context still returns a template brief and says so.
+ */
+export async function assembleBrief(payload) {
+  const subject = String(readInput(payload, 'subject') || '').trim();
+  if (!subject) {
+    return {
+      status: 'error',
+      error: 'subject is required',
+      message: 'A subject is required before a brief can be assembled.',
+    };
+  }
+
+  const raw = readInput(payload, 'contextJson');
   let issueContext = null;
   let pageContext = null;
-  const raw = payload?.contextJson || payload?.inputs?.contextJson;
+  let attached = false;
   if (raw) {
     try {
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      issueContext = parsed.issueContext || parsed.issue || null;
-      pageContext = parsed.pageContext || parsed.pages ? { pages: parsed.pages } : parsed.pageContext;
-      if (parsed.pages && !pageContext) {
-        pageContext = { pages: parsed.pages };
-      }
-    } catch (e) {
-      return { status: 'error', error: 'contextJson must be valid JSON' };
+      const parsed = parseBriefContext(raw);
+      issueContext = parsed.issueContext;
+      pageContext = parsed.pageContext;
+      attached = parsed.attached;
+    } catch {
+      return {
+        status: 'error',
+        error: 'contextJson must be valid JSON from a gather action.',
+        message: 'contextJson was not valid JSON. Pass the gather action result, or omit it.',
+      };
     }
   }
+
+  const warnings = attached
+    ? []
+    : ['No gather-action context was attached. This is a seat template, not a workspace read.'];
 
   const brief = assembleBriefFromInputs({
     subject,
-    role: payload?.role || payload?.inputs?.role || 'teammate',
-    meetingLabel: payload?.meetingLabel || payload?.inputs?.meetingLabel || '',
-    objective: payload?.objective || payload?.inputs?.objective || '',
+    role: readInput(payload, 'role') || 'teammate',
+    meetingLabel: readInput(payload, 'meetingLabel') || '',
+    objective: readInput(payload, 'objective') || '',
     issueContext,
     pageContext,
+    warnings,
   });
 
-  return { status: 'success', brief };
+  return {
+    status: 'success',
+    brief,
+    contextAttached: attached,
+    message: attached
+      ? `Assembled a workspace brief for ${subject}. Use only the sources in the brief.`
+      : `Assembled a template brief for ${subject}. Workspace context was not attached, so say that.`,
+  };
 }

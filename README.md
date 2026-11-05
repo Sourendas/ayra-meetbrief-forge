@@ -1,109 +1,172 @@
 # MeetBrief (Ayra) — Forge
 
-Pre-meeting briefing agent for **Atlassian Forge**, rebuilt from [ayra-meetbrief](https://github.com/Sourendas/ayra-meetbrief) for **[Codegeist 2026](https://codegeist2026.devpost.com/)**.
+A pre-meeting brief inside Jira and Confluence. Open a work item, and MeetBrief reads that issue plus related Confluence pages, then lays out one scannable page: **Snapshot**, **Recent**, **Discussion**, **Open questions**, and **Sources**. Anything it could not read is labeled as unverified. The same brief is available from the **MeetBrief** Rovo agent.
 
-| Field | Value |
+This is the Forge app for [Codegeist 2026](https://codegeist2026.devpost.com/). The earlier web MVP (Tavily, optional Groq) lives at [Sourendas/ayra-meetbrief](https://github.com/Sourendas/ayra-meetbrief) and [ayra-meetbrief-souren1.vercel.app](https://ayra-meetbrief-souren1.vercel.app). The Forge app does not depend on Vercel, Tavily, or any paid API.
+
+| | |
 | --- | --- |
 | Hackathon | Codegeist 2026 |
 | Category | **Software Teams** |
-| Products | Jira (required) + Confluence (optional) |
-| Modules | `jira:issuePanel`, `confluence:globalPage`, `rovo:agent`, `action` |
-| Bonus aims | **Best Agents** (`rovo:agent` + actions); **Teamwork Graph** scopes stubbed |
-| Deadline | 22 Dec 2026, 12:00pm PST |
-| Spend | **$0** — Forge free tier, template brief engine (no Tavily/Vercel required for core) |
-| License | MIT |
+| Products | Jira (required) and Confluence (optional install) |
+| Modules | Jira issue panel, Confluence global page (`meetbrief`), Rovo agent, three actions |
+| Bonus claimed | **Rovo agent** (`rovo:agent` + `gather-issue-context`, `gather-page-context`, `assemble-brief`) |
+| Bonus not claimed | **Teamwork Graph**. Those scopes are commented out in `manifest.yml` because they sit behind a restricted allowlist. |
+| Spend | **$0**. Forge free tier. No model key, no PayPal, no secrets in the repo. |
+| License | [MIT](LICENSE) |
+| App id | `ari:cloud:ecosystem::app/fdcd4f89-f906-42ff-8922-f2748aec5ebe` (already registered — do not run `forge register` again) |
+| Dev site | [ayra-dev.atlassian.net](https://ayra-dev.atlassian.net) (Jira + Confluence, development install) |
 
-## What it does
+## What a brief contains
 
-MeetBrief turns workspace context into a scannable one-pager before a meeting:
+- **Snapshot** — subject, meeting, seat (teammate, supplier, investor, partner, influencer), objective, and the work item’s status, type, priority, and assignee when Jira returns them.
+- **Recent** — description excerpt, latest comments, parent, linked work, and up to three Confluence pages.
+- **Discussion** — prompts for the seat you picked, plus the status and links that actually came back.
+- **Open questions** — decisions still missing (owner, empty description, stale update, no agenda page).
+- **Sources** — browse and page URLs only. If a read fails, the panel says so and does not invent a link.
 
-1. **Snapshot** — subject, seat (supplier / investor / partner / influencer / teammate), objective  
-2. **Recent context** — Jira issue + Confluence pages when available  
-3. **Discussion points** + **open questions** tuned to your seat  
-4. **Unverified / gaps** — explicit callouts when context is missing  
-5. **Sources** — links you can click in the room  
+The issue panel builds this when it opens. The Confluence page waits until you enter an issue key or a topic. Rovo actions call the same Jira and Confluence reads. A failed read returns `partial` or `error` with a plain message.
 
-The Jira **issue panel** and Confluence **global page** use Forge **UI Kit** + a template assembler (same UX ideas as the original MeetBrief web app). The **MeetBrief Rovo agent** can call actions to gather issue/page context and assemble the brief in chat.
+## Install and share
 
-Original web MVP (Tavily research): https://ayra-meetbrief-souren1.vercel.app  
-
-## Repo layout
-
-```
-manifest.yml          # modules, permissions, app id placeholder
-package.json
-src/
-  frontend/index.jsx  # UI Kit brief form → summary
-  resolvers/index.js  # generateBrief / ping
-  actions.js          # Rovo actions (Jira + Confluence + assemble)
-  lib/brief.js        # template brief engine
-  index.js
-```
-
-## Prerequisites (Souren)
-
-1. **Node.js** LTS 22.x or 24.x ([Forge getting started](https://developer.atlassian.com/platform/forge/getting-started/))  
-2. **Forge CLI** (free): `npm install -g @forge/cli` then `forge --version`  
-3. **Atlassian account** + **API token with Forge scopes** from https://id.atlassian.com/manage-profile/security/api-tokens → *Create API token with scopes* → app **Forge**  
-4. **Dev site** (free options):  
-   - Preferred: `forge site provision` / `forge install --demo-site` (90-day demo site with seeded data, includes Rovo)  
-   - Or: classic cloud developer site via http://go.atlassian.com/cloud-dev  
-
-## Register, deploy, share (judges)
+Prerequisites: Node.js 22.x or 24.x, and the Forge CLI (`npm install -g @forge/cli`). Log in with an Atlassian API token that includes Forge scopes. Do not use `sudo`.
 
 ```bash
 git clone https://github.com/Sourendas/ayra-meetbrief-forge.git
 cd ayra-meetbrief-forge
 npm install
-
-# Login (email + scoped API token). Do NOT use sudo.
 forge login
-
-# Replace placeholder app.id and link the app to your account
-forge register
-
-# Deploy to development environment
-forge deploy
-
-# Install on demo site (or pick your cloud site)
-forge install --demo-site
-# or: forge install
-
-# Hot reload while iterating
-forge tunnel
 ```
 
-### Where to find the app after install
+The manifest already has the registered app id. `forge register` would create a second app. Deploy the code you have:
 
-- **Jira** — open any work item → Apps (grid) → **MeetBrief** issue panel  
-- **Confluence** — Apps / MeetBrief global page route `meetbrief`  
-- **Rovo** — Chat → agent **MeetBrief** (conversation starters included)  
+```bash
+forge deploy
+```
 
-### Share with judges
+Install on a site you administer (repeat `--product confluence` so the global page and page search are available):
 
-1. Keep the GitHub repo public (this one).  
-2. Provide a short Loom/demo: open issue panel → generate brief → show Rovo agent calling `gather-issue-context`.  
-3. Optional Marketplace listing later for the Marketplace bonus (not required for MVP).  
-4. Submission on Devpost: https://codegeist2026.devpost.com/  
+```bash
+forge install --site ayra-dev.atlassian.net --product jira --environment development
+forge install --site ayra-dev.atlassian.net --product confluence --environment development
+```
 
-## Zero-spend notes
+Upgrade an existing install with `forge install --upgrade --site ayra-dev.atlassian.net --product jira --environment development` (and the same for Confluence).
 
-- No paid Atlassian APIs for the template brief path.  
-- No Vercel required for the Forge core.  
-- External Tavily/Groq from the original MeetBrief are **out of scope** for the Forge MVP (can be added later only with allowlisted `permissions.external.fetch` and free-tier keys).  
-- Teamwork Graph scopes are declared; live Graph calls may need app allowlisting — see stub notes in `src/actions.js`.
+A fresh 90-day site with sample data:
 
-## Next steps for Souren (blockers for deploy)
+```bash
+forge install --demo-site
+```
 
-1. Create Forge-scoped API token and run `forge login`.  
-2. Run `forge register` in this repo (writes a real `app.id` into `manifest.yml`).  
-3. `forge deploy` then `forge install --demo-site` (or install on your cloud-dev site).  
-4. Confirm Rovo agent appears; exercise actions on a sample issue.  
-5. Register / complete Codegeist 2026 Devpost entry if not already done.  
-6. (Optional) Request Teamwork Graph allowlist for the new app id; wire `requestTeamworkGraph`.  
+### Sharing link for judges
 
-## Related
+1. Open the [developer console](https://developer.atlassian.com/console/myapps/).
+2. Select **MeetBrief**.
+3. Open **Distribution** → **Edit**.
+4. Set distribution to **Sharing**, save, and copy the installation link.
+5. Send that link. A judge opens it, chooses their own cloud site, and installs **Jira** and **Confluence**.
 
-- Original MeetBrief: https://github.com/Sourendas/ayra-meetbrief  
-- Forge docs: https://developer.atlassian.com/platform/forge/getting-started/  
-- Rovo agent module: https://developer.atlassian.com/platform/forge/manifest-reference/modules/rovo-agent/  
+The development app is already installed on [https://ayra-dev.atlassian.net](https://ayra-dev.atlassian.net). That site is not public. Judges without access use the sharing link or `forge install --demo-site` from their own Forge login after you add them, or from a fork they register themselves. A fork must run `forge register` because this app id belongs to the existing app.
+
+`npm test` runs the template and mapper checks. `forge lint` checks the manifest. No API token is required for the unit tests.
+
+## Where to click
+
+**Jira issue panel**
+
+1. Open any work item on the site, for example from a software project board.
+2. Find the **MeetBrief** panel on the issue (issue view → Apps, or the MeetBrief section on the issue).
+3. The panel reads that issue and searches Confluence for the summary.
+4. Change **Your seat** or **Objective**, then **Rebuild brief**.
+
+**Confluence**
+
+1. In Confluence, open **Apps → MeetBrief**.
+2. The global page route is `meetbrief`. On a development install the path looks like `/wiki/apps/<app-id>/<environment-id>/meetbrief`. Production drops the environment id. The Apps menu is the reliable way in.
+3. Enter an issue key such as the one you just opened, or a topic in **Confluence search**, then **Build brief**.
+
+**Rovo**
+
+1. Open **Rovo → Agents → MeetBrief** (Chat, then the agent).
+2. Try a starter, or type: `Brief me on ABC-123` using a real key from the site.
+3. The agent should call **Gather Jira issue context**, then **Gather Confluence page context**, then **Assemble meeting brief**.
+4. If Jira or Confluence declines the read, the action returns a partial result and the reply should say the brief is a template. That is the expected honest path, not a crash.
+
+Hot reload while iterating: `forge tunnel`.
+
+## Walkthrough
+
+Screenshots of the installed panel can replace this block. Until then, this is the issue-panel layout:
+
+```
++------------------------------------------------------------------+
+| MeetBrief                                         [ Pre-meeting ] |
+| One page before you walk in.                                      |
+|                                                                   |
+| [i] ABC-123                                                       |
+|     Anchored to this work item. Change the seat, then rebuild.    |
+|                                                                   |
+| Your seat        [ Teammate v ]                                   |
+| Meeting          [ Thu 11:00 stakeholder sync          ]          |
+| Jira issue key   [ ABC-123                              ]          |
+| Objective        [ Name the rollout owner              ]          |
+|                                         [ Rebuild brief ]         |
+|                                                                   |
+| SNAPSHOT                      [ In Progress ] [ Teammate ]        |
+| Subject: Rollout checklist                                        |
+| Work item: ABC-123 — Rollout checklist                            |
+| In Progress · Story · High · Priya Shah                            |
+|                                                                   |
+| [!] Could not verify                                              |
+|     (only if a read failed or the objective is empty)             |
+|                                                                   |
+| RECENT                                                            |
+| [Jira] ABC-123: Rollout checklist                                 |
+| [Jira] Description — Need an owner.                               |
+| [Jira] Comment · Ari — Blocked on legal.                          |
+| [Confluence] Rollout runbook — Engineering — Check the owner.     |
+|                                                                   |
+| DISCUSSION                                                        |
+| 1. Stay on the objective: Name the rollout owner                  |
+| 2. Start from the decision this meeting has to make.              |
+| 3. Confirm ABC-123 is still In Progress...                        |
+|                                                                   |
+| OPEN QUESTIONS                                                    |
+| • Any update that is still only in someone’s head?                |
+|                                                                   |
+| SOURCES                                                           |
+| ABC-123 on Jira                                                   |
+| Rollout runbook                                                   |
+|                                                                   |
+| PASTE INTO NOTES                                                  |
+| (markdown of the same five sections)                              |
++------------------------------------------------------------------+
+```
+
+On the Confluence page, before the first build, the panel shows a discovery message: enter an issue key or a topic. An empty Jira or Confluence response leaves the five sections in place and explains the gap. It does not fill them with made-up status or URLs.
+
+## Demo recording
+
+The click-by-click script for a screen recording (no face camera) is in [TESTING.md](TESTING.md).
+
+## Layout
+
+```
+manifest.yml             modules, scopes, registered app id
+src/frontend/index.jsx   issue panel + Confluence page (UI Kit)
+src/resolvers/index.js   generateBrief — Jira issue + Confluence search
+src/actions.js           Rovo actions
+src/lib/atlassian.js     REST reads, honest failures
+src/lib/brief.js         Snapshot / Recent / Discussion / Open questions / Sources
+src/lib/text.js          ADF text, issue keys, CQL phrases
+src/lib/brief.test.js    node:test
+DEVPOST.md               submission draft (not submitted)
+TESTING.md               recording script
+```
+
+Scopes in use: `read:jira-work`, `read:confluence-content.summary`, `read:confluence-content.permission`, `search:confluence`. Teamwork Graph scopes are comments only.
+
+## License
+
+MIT. Copyright (c) 2026 Souren Das. See [LICENSE](LICENSE).
