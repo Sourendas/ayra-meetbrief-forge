@@ -3,11 +3,10 @@
   "version": "0.2.0",
   "description": "MeetBrief for Atlassian Forge — pre-meeting briefing agent for Jira/Confluence (Codegeist 2026)",
   "main": "src/index.js",
-  "type": "module",
   "private": true,
   "license": "MIT",
   "scripts": {
-    "test": "node --test src/lib/brief.test.js",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/brief.test.js",
     "lint": "forge lint",
     "deploy": "forge deploy",
     "install:demo": "forge install --demo-site",
