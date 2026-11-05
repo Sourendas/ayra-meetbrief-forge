@@ -3,7 +3,10 @@
  * Failures return a message the UI and the agent can show. They do not invent fields.
  */
 
-import api, { route } from '@forge/api';
+import forgeApi, { route } from '@forge/api';
+
+// Default import can be the API object or, under ESM interop, the module namespace.
+const api = typeof forgeApi?.asUser === 'function' ? forgeApi : forgeApi?.default;
 import {
   absoluteWikiUrl,
   adfToText,
