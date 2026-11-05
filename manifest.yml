@@ -28,7 +28,8 @@ modules:
   rovo:agent:
     - key: meetbrief-agent
       name: MeetBrief
-      description: Pre-meeting briefing agent that gathers Jira + Confluence context into a sourced one-pager.
+      description: Pre-meeting briefing agent that gathers Jira + Confluence context
+        into a sourced one-pager.
       prompt: |
         You are MeetBrief, a pre-meeting briefing agent for software teams.
 
@@ -64,8 +65,8 @@ modules:
       function: gatherIssueContext
       actionVerb: GET
       description: >
-        Reads a Jira work item (summary, description, status, comments snippet, linked issues)
-        and returns structured context for a pre-meeting brief.
+        Reads a Jira work item (summary, description, status, comments snippet,
+        linked issues) and returns structured context for a pre-meeting brief.
       inputs:
         issueKey:
           title: Issue key
@@ -78,8 +79,9 @@ modules:
       function: gatherPageContext
       actionVerb: GET
       description: >
-        Searches or reads Confluence pages related to a topic and returns titles, excerpts,
-        and links suitable for a meeting brief. Stub-friendly when CQL returns little.
+        Searches or reads Confluence pages related to a topic and returns
+        titles, excerpts, and links suitable for a meeting brief. Stub-friendly
+        when CQL returns little.
       inputs:
         query:
           title: Search query
@@ -97,8 +99,9 @@ modules:
       function: assembleBrief
       actionVerb: CREATE
       description: >
-        Formats subject, role, meeting time, and gathered context into a MeetBrief-style
-        one-pager (snapshot, discussion points, open questions, sources).
+        Formats subject, role, meeting time, and gathered context into a
+        MeetBrief-style one-pager (snapshot, discussion points, open questions,
+        sources).
       inputs:
         subject:
           title: Subject
@@ -145,8 +148,7 @@ app:
     name: nodejs22.x
     memoryMB: 256
     architecture: arm64
-  # REPLACE via: forge register
-  id: ari:cloud:ecosystem::app/00000000-0000-4000-8000-000000000001
+  id: ari:cloud:ecosystem::app/fdcd4f89-f906-42ff-8922-f2748aec5ebe
   compatibility:
     jira:
       required: true
@@ -159,6 +161,6 @@ permissions:
     - read:confluence-content.summary
     - read:confluence-content.permission
     - search:confluence
-    # Teamwork Graph (Preview) — enable for Bonus: Best apps with Teamwork Graph integration
-    - read:graph:jira
-    - read:graph:confluence
+    # Teamwork Graph scopes removed for first deploy (restricted until allowlisted):
+    # - read:graph:jira
+    # - read:graph:confluence
