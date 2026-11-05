@@ -1,0 +1,164 @@
+# MeetBrief (Ayra) — Codegeist 2026 Forge app
+# Category: Software Teams
+# Bonuses targeted: Rovo agent (+ Teamwork Graph scopes stubbed for later)
+#
+# Before first deploy: replace app.id by running `forge register` (needs Atlassian login).
+# Placeholder id below is intentional until register.
+
+modules:
+  jira:issuePanel:
+    - key: meetbrief-issue-panel
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: MeetBrief
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      viewportSize: large
+
+  confluence:globalPage:
+    - key: meetbrief-confluence-page
+      resource: main
+      resolver:
+        function: resolver
+      render: native
+      title: MeetBrief
+      route: meetbrief
+
+  rovo:agent:
+    - key: meetbrief-agent
+      name: MeetBrief
+      description: Pre-meeting briefing agent that gathers Jira + Confluence context into a sourced one-pager.
+      prompt: |
+        You are MeetBrief, a pre-meeting briefing agent for software teams.
+
+        Your job is to help users walk into meetings prepared with a short, sourced brief —
+        not a blank page. Prefer Atlassian workspace context (Jira work items, Confluence pages)
+        over inventing external news.
+
+        You can help with:
+        A. Building a pre-meeting brief from a Jira issue key or summary
+        B. Pulling related Confluence pages for agenda / background
+        C. Framing discussion points and open questions for a role (supplier, investor, partner, influencer, or teammate)
+        D. Flagging gaps: what is missing, unverified, or out of date
+
+        Rules:
+        - Never invent URLs, dates, or claims. If context is missing, say so and ask one clarifying question.
+        - When summarizing, separate verified workspace facts from unverified / background notes.
+        - Keep the brief scannable: Snapshot, Recent context, Discussion points, Open questions, Sources.
+        - Use the gather-issue-context action when the user names a Jira issue.
+        - Use the gather-page-context action when the user names a Confluence page or space topic.
+        - Use the assemble-brief action to format the final one-pager once you have context.
+      conversationStarters:
+        - Brief me for my next stakeholder meeting from this issue
+        - What Confluence context should I read before this sync?
+        - Draft discussion points for an investor check-in
+      actions:
+        - gather-issue-context
+        - gather-page-context
+        - assemble-brief
+
+  action:
+    - key: gather-issue-context
+      name: Gather Jira issue context
+      function: gatherIssueContext
+      actionVerb: GET
+      description: >
+        Reads a Jira work item (summary, description, status, comments snippet, linked issues)
+        and returns structured context for a pre-meeting brief.
+      inputs:
+        issueKey:
+          title: Issue key
+          type: string
+          required: true
+          description: Jira issue key, for example PROJ-123.
+
+    - key: gather-page-context
+      name: Gather Confluence page context
+      function: gatherPageContext
+      actionVerb: GET
+      description: >
+        Searches or reads Confluence pages related to a topic and returns titles, excerpts,
+        and links suitable for a meeting brief. Stub-friendly when CQL returns little.
+      inputs:
+        query:
+          title: Search query
+          type: string
+          required: true
+          description: Topic, meeting name, or page title keywords.
+        spaceKey:
+          title: Space key
+          type: string
+          required: false
+          description: Optional Confluence space key to narrow search.
+
+    - key: assemble-brief
+      name: Assemble meeting brief
+      function: assembleBrief
+      actionVerb: CREATE
+      description: >
+        Formats subject, role, meeting time, and gathered context into a MeetBrief-style
+        one-pager (snapshot, discussion points, open questions, sources).
+      inputs:
+        subject:
+          title: Subject
+          type: string
+          required: true
+          description: Company, person, or meeting topic.
+        role:
+          title: Your seat
+          type: string
+          required: false
+          description: One of supplier, investor, partner, influencer, teammate.
+        meetingLabel:
+          title: Meeting label
+          type: string
+          required: false
+          description: When / what the meeting is (free text).
+        objective:
+          title: Objective
+          type: string
+          required: false
+          description: What you want from the meeting.
+        contextJson:
+          title: Context JSON
+          type: string
+          required: false
+          description: Optional JSON string of prior gather-* action results.
+
+  function:
+    - key: resolver
+      handler: resolvers.index.handler
+    - key: gatherIssueContext
+      handler: actions.gatherIssueContext
+    - key: gatherPageContext
+      handler: actions.gatherPageContext
+    - key: assembleBrief
+      handler: actions.assembleBrief
+
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+
+app:
+  runtime:
+    name: nodejs22.x
+    memoryMB: 256
+    architecture: arm64
+  # REPLACE via: forge register
+  id: ari:cloud:ecosystem::app/00000000-0000-4000-8000-000000000001
+  compatibility:
+    jira:
+      required: true
+    confluence:
+      required: false
+
+permissions:
+  scopes:
+    - read:jira-work
+    - read:confluence-content.summary
+    - read:confluence-content.permission
+    - search:confluence
+    # Teamwork Graph (Preview) — enable for Bonus: Best apps with Teamwork Graph integration
+    - read:graph:jira
+    - read:graph:confluence
