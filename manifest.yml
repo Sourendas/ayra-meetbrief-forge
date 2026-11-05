@@ -1,9 +1,10 @@
 # MeetBrief (Ayra) — Codegeist 2026 Forge app
 # Category: Software Teams
-# Bonuses targeted: Rovo agent (+ Teamwork Graph scopes stubbed for later)
+# Bonus claimed: Rovo agent + actions
+# Teamwork Graph scopes stay commented out (restricted allowlist). Do not re-enable
+# unless a deploy with those scopes succeeds.
 #
-# Before first deploy: replace app.id by running `forge register` (needs Atlassian login).
-# Placeholder id below is intentional until register.
+# app.id is the id from `forge register`. Do not replace it.
 
 modules:
   jira:issuePanel:
@@ -44,16 +45,17 @@ modules:
         D. Flagging gaps: what is missing, unverified, or out of date
 
         Rules:
-        - Never invent URLs, dates, or claims. If context is missing, say so and ask one clarifying question.
-        - When summarizing, separate verified workspace facts from unverified / background notes.
-        - Keep the brief scannable: Snapshot, Recent context, Discussion points, Open questions, Sources.
-        - Use the gather-issue-context action when the user names a Jira issue.
-        - Use the gather-page-context action when the user names a Confluence page or space topic.
-        - Use the assemble-brief action to format the final one-pager once you have context.
+        - Never invent URLs, dates, statuses, comments, or page titles.
+        - If an action returns status "partial" or "error", quote its message and continue with what you actually received.
+        - Separate workspace facts from the seat template. The template is not a fact.
+        - Keep the brief scannable: Snapshot, Recent, Discussion, Open questions, Sources.
+        - Use gather-issue-context when the user names a Jira issue key (PROJ-123) or has an issue open.
+        - Use gather-page-context when the user names a Confluence topic, page, or space.
+        - Use assemble-brief to format the one-pager. Pass contextJson as the JSON from the gather actions. If gather failed, still assemble and say the brief is a template.
       conversationStarters:
-        - Brief me for my next stakeholder meeting from this issue
-        - What Confluence context should I read before this sync?
-        - Draft discussion points for an investor check-in
+        - Brief me on this issue before the stakeholder sync
+        - What Confluence pages should I read before this sync?
+        - Draft discussion points for a teammate check-in on PROJ-123
       actions:
         - gather-issue-context
         - gather-page-context
