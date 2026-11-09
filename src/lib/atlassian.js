@@ -122,6 +122,7 @@ export function mapIssue(data) {
     key,
     summary: fields.summary || '',
     status: fields.status?.name || '',
+    statusCategory: fields.status?.statusCategory?.key || '',
     issueType: fields.issuetype?.name || '',
     priority: fields.priority?.name || '',
     assignee: fields.assignee?.displayName || '',
@@ -196,4 +197,40 @@ export async function searchConfluencePages(query, spaceKey, { auth = 'user' } =
   const data = await result.response.json();
   const pages = mapSearchResults(data).filter((page) => page.title);
   return { ok: true, query: phrase, spaceKey: space || null, pages };
+}
+
+/**
+ * Write-back: add a comment to the work item as the signed-in user (scope write:jira-work).
+ * Only called when the user clicks "Post open questions". Returns the new comment link.
+ */
+export async function postIssueComment(issueKey, adfBody) {
+  const key = normalizeIssueKey(issueKey);
+  if (!key) return { ok: false, message: 'Issue key should look like PROJ-123. Nothing was posted.' };
+  if (!adfBody) return { ok: false, message: 'There are no open questions to post.' };
+
+  const response = await api.asUser().requestJira(route`/rest/api/3/issue/${key}/comment`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: adfBody }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    return {
+      ok: false,
+      status: response.status,
+      message: failureMessage(
+        'jira',
+        response.status,
+        body,
+        'Jira did not accept the comment. Check that you can comment on this work item.'
+      ).replace('declined the read', 'declined the comment'),
+    };
+  }
+  const data = await response.json();
+  const browse = browseUrlFromSelf(data?.self, key);
+  return {
+    ok: true,
+    commentId: String(data?.id || ''),
+    commentUrl: browse && data?.id ? `${browse}?focusedCommentId=${data.id}` : browse,
+  };
 }

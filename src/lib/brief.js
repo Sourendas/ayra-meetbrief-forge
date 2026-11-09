@@ -42,6 +42,85 @@ const SEAT_LABEL = {
   teammate: 'Teammate',
 };
 
+function statusBucket(issue) {
+  const category = String(issue?.statusCategory || '').toLowerCase();
+  const name = String(issue?.status || '').toLowerCase();
+  if (/block|on hold|waiting/.test(name)) return 'blocked';
+  if (/review|qa|testing/.test(name)) return 'review';
+  if (category === 'done' || /done|closed|resolved|complete|released/.test(name)) return 'done';
+  if (category === 'indeterminate' || /progress|doing|develop/.test(name)) return 'active';
+  if (category === 'new' || /to do|todo|open|backlog|new|selected/.test(name)) return 'todo';
+  return '';
+}
+
+const LABEL_PROMPTS = [
+  [/^(security|sec|vuln|cve)/, 'Labelled security: agree who signs off and keep exploit detail out of the meeting notes.'],
+  [/regression/, 'Labelled regression: name the change that caused it and decide whether a rollback beats a fix.'],
+  [/^(customer|support|escalation|cx)/, 'Customer-facing: agree what the customer hears next and who tells them.'],
+  [/^(release|launch|go-?live|ship)/, 'Tied to a release: confirm the cut-off date and who makes the go/no-go call.'],
+  [/(tech-?debt|debt|refactor)/, 'Tech debt: put a cost on leaving it so it can be ranked against feature work.'],
+  [/(incident|outage|sev[0-9]?|p[01]$)/, 'Incident work: confirm the follow-up actions have owners and dates.'],
+];
+
+/**
+ * Discussion prompts and open questions that come from the work item itself
+ * (type, status, priority, labels), not from the seat template.
+ * Each line names the field it came from, so the room can tell fact from template.
+ */
+export function issueAwarePrompts(issue) {
+  const prompts = [];
+  const questions = [];
+  if (!issue?.key) return { prompts, questions };
+
+  const status = issue.status || 'this status';
+  const bucket = statusBucket(issue);
+  if (bucket === 'blocked') {
+    prompts.push(`${issue.key} is ${status}: name the blocker, who can clear it, and by when.`);
+  } else if (bucket === 'review') {
+    prompts.push(`${issue.key} is in ${status}: ask what is left before it can merge or ship.`);
+  } else if (bucket === 'active') {
+    prompts.push(`${issue.key} is ${status}: ask what is left and what would stop it landing this week.`);
+  } else if (bucket === 'done') {
+    prompts.push(`${issue.key} is already ${status}: use the time for follow-ups and lessons, not a status recap.`);
+  } else if (bucket === 'todo') {
+    prompts.push(`${issue.key} is still ${status}: decide whether it is committed now or goes back to the backlog.`);
+  }
+
+  const type = String(issue.issueType || '').toLowerCase();
+  const description = String(issue.descriptionExcerpt || '');
+  if (/bug|defect|incident/.test(type)) {
+    prompts.push('It is a bug: agree who reproduces it and who verifies the fix before anyone debates a date.');
+    if (description && !/(steps|repro|reproduce|expected|actual)/i.test(description)) {
+      questions.push(`Are the steps to reproduce ${issue.key} written down anywhere?`);
+    }
+  } else if (/epic/.test(type)) {
+    prompts.push('It is an epic: walk the child items still open and agree which ones can be cut.');
+  } else if (/story|feature/.test(type)) {
+    prompts.push('It is a story: check the acceptance criteria are written before calling it ready.');
+    if (description && !/(acceptance|criteria|given|when|then|done when)/i.test(description)) {
+      questions.push(`What are the acceptance criteria for ${issue.key}?`);
+    }
+  } else if (/sub-?task|task|chore/.test(type)) {
+    prompts.push('It is a task: confirm the definition of done fits one owner’s week.');
+  }
+
+  const labels = (issue.labels || []).map((label) => String(label).toLowerCase());
+  for (const [pattern, line] of LABEL_PROMPTS) {
+    if (labels.some((label) => pattern.test(label)) && !prompts.includes(line)) prompts.push(line);
+  }
+
+  const priority = String(issue.priority || '');
+  if (/highest|critical|blocker|urgent|^p0$|^p1$|^high$/i.test(priority)) {
+    prompts.push(`Priority is ${priority}: agree what gets dropped to make room for it.`);
+  }
+
+  if (bucket === 'done' && Array.isArray(issue.links) && issue.links.some((link) => !/done|closed|resolved/i.test(link.status || ''))) {
+    questions.push(`${issue.key} is done but linked work is still open. Who owns closing it out?`);
+  }
+
+  return { prompts: prompts.slice(0, 3), questions };
+}
+
 function uniqueSources(items = []) {
   const seen = new Set();
   const out = [];
@@ -156,11 +235,17 @@ export function assembleBriefFromInputs({
       );
     }
 
-    discussion.splice(
-      1,
-      0,
-      `Confirm ${issue.key} is still ${issue.status || 'in this status'} before the room moves on.`
-    );
+    const aware = issueAwarePrompts(issue);
+    if (aware.prompts.length) {
+      discussion.splice(1, 0, ...aware.prompts);
+    } else {
+      discussion.splice(
+        1,
+        0,
+        `Confirm ${issue.key} is still ${issue.status || 'in this status'} before the room moves on.`
+      );
+    }
+    openQuestions.push(...aware.questions);
 
     if (!issue.assignee) {
       openQuestions.push('Who owns this work item walking into the meeting?');
@@ -237,7 +322,7 @@ export function assembleBriefFromInputs({
     if (issue.updated) snapshot.push(`Updated: ${formatWhen(issue.updated)}`);
   }
 
-  const trimmedDiscussion = discussion.slice(0, 6);
+  const trimmedDiscussion = discussion.slice(0, 8);
   const trimmedQuestions = [];
   for (const question of openQuestions) {
     if (!trimmedQuestions.includes(question)) trimmedQuestions.push(question);
@@ -293,6 +378,8 @@ export function assembleBriefFromInputs({
           key: issue.key,
           summary: issue.summary || '',
           status: issue.status || '',
+          statusCategory: issue.statusCategory || '',
+          labels: Array.isArray(issue.labels) ? issue.labels.slice(0, 8) : [],
           issueType: issue.issueType || '',
           priority: issue.priority || '',
           assignee: issue.assignee || '',
