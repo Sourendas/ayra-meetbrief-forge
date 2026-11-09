@@ -219,6 +219,8 @@ const App = () => {
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState(null);
   const [postedUrl, setPostedUrl] = useState('');
+  const [postDone, setPostDone] = useState(false);
+  const [postNote, setPostNote] = useState('');
 
   const build = async (overrides = {}, stillCurrent = () => true) => {
     const fields = {
@@ -258,7 +260,11 @@ const App = () => {
         setHistoryWarning(result.historyWarning || '');
         setPostError(null);
         const latest = (result.history || []).find((entry) => entry.id === result.historyEntryId);
-        setPostedUrl(latest?.commentUrl || '');
+        // Nothing new to post when every open question is already in a MeetBrief comment on this issue.
+        const nothingNew = Boolean(latest?.commentUrl) || result.unpostedCount === 0;
+        setPostDone(nothingNew && Boolean(result.brief?.openQuestions?.length));
+        setPostedUrl(latest?.commentUrl || (nothingNew ? result.lastCommentUrl || '' : ''));
+        setPostNote(nothingNew && !latest?.commentUrl ? 'These open questions are already in a MeetBrief comment on this work item.' : '');
         if (result.brief?.subject) {
           setSubject((current) =>
             current.trim().toUpperCase() === fields.issueKey.trim().toUpperCase()
@@ -306,7 +312,7 @@ const App = () => {
   }, []);
 
   const postOpenQuestions = async () => {
-    if (!brief?.issue?.key || !historyEntryId) return;
+    if (!brief?.issue?.key || !historyEntryId || posting || postDone) return;
     setPosting(true);
     setPostError(null);
     try {
@@ -315,7 +321,9 @@ const App = () => {
         historyEntryId,
       });
       if (result?.status === 'success' || result?.status === 'already-posted') {
+        setPostDone(true);
         setPostedUrl(result.commentUrl || '');
+        setPostNote(result.status === 'already-posted' ? 'Already posted. No new comment was added.' : '');
         setHistory(result.history || history);
         setChanges(result.changes || changes);
       } else {
@@ -334,15 +342,20 @@ const App = () => {
   const canPost = Boolean(brief?.issue?.key && historyEntryId && brief?.openQuestions?.length);
   const writeBack = canPost ? (
     <Stack space="space.100">
-      {postedUrl ? (
+      {postDone ? (
         <SectionMessage appearance="success" title={`Posted to ${brief.issue.key}`}>
-          <Link href={postedUrl} openNewTab>
-            Open the comment
-          </Link>
+          <Stack space="space.050">
+            {postNote ? <Text>{postNote}</Text> : null}
+            {postedUrl ? (
+              <Link href={postedUrl} openNewTab>
+                Open the comment
+              </Link>
+            ) : null}
+          </Stack>
         </SectionMessage>
       ) : (
         <Inline space="space.100" alignBlock="center">
-          <Button appearance="default" onClick={postOpenQuestions} isDisabled={posting || loading}>
+          <Button appearance="default" onClick={postOpenQuestions} isDisabled={posting || loading || postDone}>
             {posting ? 'Posting…' : `Post open questions to ${brief.issue.key}`}
           </Button>
           <Text>Adds one comment as you, so answers land on the work item.</Text>

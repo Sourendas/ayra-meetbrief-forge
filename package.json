@@ -1,6 +1,6 @@
 {
   "name": "ayra-meetbrief-forge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MeetBrief for Atlassian Forge — pre-meeting briefing agent for Jira/Confluence (Codegeist 2026)",
   "main": "src/index.js",
   "private": true,

@@ -4,6 +4,9 @@ import { assembleBriefFromInputs, issueAwarePrompts } from './brief.js';
 import { mapIssue } from './atlassian.js';
 import {
   HISTORY_LIMIT,
+  markPending,
+  postDecision,
+  recordPost,
   changesSincePrevious,
   historyEntryFromBrief,
   historyKey,
@@ -155,4 +158,38 @@ test('open questions become an ADF comment, and an empty list posts nothing', ()
   assert.match(adf.content[1].content[0].text, /Meeting: Thu standup/);
   assert.match(JSON.stringify(adf), /KAN-7/);
   assert.equal(openQuestionsCommentAdf({ ...entry, openQuestions: [] }, 'KAN-7'), null);
+});
+
+test('postDecision guards by entry, by question set, and while a post is pending', () => {
+  const entry = historyEntryFromBrief(briefFor(issue()), { now: NOW, id: 'a' });
+  const empty = { questions: [], posts: [], pending: null };
+  assert.equal(postDecision(entry, empty, NOW).action, 'post');
+  assert.equal(postDecision(entry, markPending(empty, 'a', NOW), NOW).status, 'in-progress');
+  assert.equal(postDecision(entry, markPending(empty, 'a', NOW), new Date(NOW.getTime() + 120000)).action, 'post');
+  const ledger = recordPost(empty, 'a', entry.openQuestions, { commentId: '1', commentUrl: 'u1', now: NOW });
+  assert.equal(ledger.pending, null);
+  assert.deepEqual(postDecision(entry, ledger, NOW), { action: 'skip', status: 'already-posted', commentUrl: 'u1' });
+  const other = { ...entry, id: 'b', openQuestions: entry.openQuestions.slice(1) };
+  assert.equal(postDecision(other, ledger, NOW).status, 'already-posted');
+  const fresh = { ...entry, id: 'c', openQuestions: [...entry.openQuestions, 'Brand new?'] };
+  assert.deepEqual(postDecision(fresh, ledger, NOW), { action: 'post', questions: ['Brand new?'] });
+});
+
+test('mapIssue drops MeetBrief’s own comments from meeting context', () => {
+  const doc = (text) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+  const mapped = mapIssue({
+    key: 'KAN-1',
+    self: 'https://ayra-dev.atlassian.net/rest/api/3/issue/1',
+    fields: {
+      summary: 'x',
+      comment: {
+        comments: [
+          { id: '10000', author: { displayName: 'Souren' }, body: doc('MeetBrief — open questions') },
+          { id: '10002', author: { displayName: 'Ari' }, body: doc('Owner is Priya.') },
+        ],
+      },
+    },
+  });
+  assert.equal(mapped.comments.length, 1);
+  assert.equal(mapped.comments[0].text, 'Owner is Priya.');
 });
