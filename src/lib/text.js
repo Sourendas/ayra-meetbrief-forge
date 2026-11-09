@@ -67,10 +67,35 @@ export function cqlPhrase(value) {
   return clip(String(value || '').replace(/["\\]/g, ' '), 80);
 }
 
-export function browseUrlFromSelf(selfUrl, issueKey) {
-  if (!selfUrl || !issueKey) return '';
+/**
+ * Build https://<site>.atlassian.net/browse/KEY for Sources and comment links.
+ * Forge requestJira often returns self as https://api.atlassian.com/ex/jira/<cloudId>/...
+ * Using that origin would emit api.atlassian.com/browse/KEY, which is not a site UI.
+ * Prefer an explicit siteBase (resolver context.siteUrl / payload.siteUrl); never emit the API host.
+ */
+export function browseUrlFromSelf(selfUrl, issueKey, siteBase) {
+  if (!issueKey) return '';
+  const key = String(issueKey);
+
+  const fromBase = (base) => {
+    if (!base) return '';
+    try {
+      const parsed = new URL(base);
+      if (!parsed.origin || parsed.hostname === 'api.atlassian.com') return '';
+      return `${parsed.origin}/browse/${key}`;
+    } catch {
+      return '';
+    }
+  };
+
+  const preferred = fromBase(siteBase);
+  if (preferred) return preferred;
+
+  if (!selfUrl) return '';
   try {
-    return `${new URL(selfUrl).origin}/browse/${issueKey}`;
+    const url = new URL(selfUrl);
+    if (url.hostname === 'api.atlassian.com') return '';
+    return `${url.origin}/browse/${key}`;
   } catch {
     return '';
   }

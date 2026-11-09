@@ -106,10 +106,10 @@ function mapLink(link) {
   };
 }
 
-export function mapIssue(data) {
+export function mapIssue(data, siteBase) {
   const fields = data?.fields || {};
   const key = data?.key || '';
-  const url = browseUrlFromSelf(data?.self, key);
+  const url = browseUrlFromSelf(data?.self, key, siteBase);
   const comments = (fields.comment?.comments || [])
     .slice(-3)
     .map((comment) => mapComment(comment, url))
@@ -156,7 +156,7 @@ export function mapSearchResults(data) {
   });
 }
 
-export async function fetchIssueContext(issueKey, { auth = 'user' } = {}) {
+export async function fetchIssueContext(issueKey, { auth = 'user', siteBase } = {}) {
   const key = normalizeIssueKey(issueKey);
   if (!key) {
     return {
@@ -175,7 +175,7 @@ export async function fetchIssueContext(issueKey, { auth = 'user' } = {}) {
   if (!result.ok) return { ok: false, message: result.message };
 
   const data = await result.response.json();
-  const issue = mapIssue(data);
+  const issue = mapIssue(data, siteBase);
   if (!issue.key) {
     return { ok: false, message: `Jira returned a payload without a key for ${key}.` };
   }
@@ -204,7 +204,7 @@ export async function searchConfluencePages(query, spaceKey, { auth = 'user' } =
  * Write-back: add a comment to the work item as the signed-in user (scope write:jira-work).
  * Only called when the user clicks "Post open questions". Returns the new comment link.
  */
-export async function postIssueComment(issueKey, adfBody) {
+export async function postIssueComment(issueKey, adfBody, { siteBase } = {}) {
   const key = normalizeIssueKey(issueKey);
   if (!key) return { ok: false, message: 'Issue key should look like PROJ-123. Nothing was posted.' };
   if (!adfBody) return { ok: false, message: 'There are no open questions to post.' };
@@ -228,7 +228,7 @@ export async function postIssueComment(issueKey, adfBody) {
     };
   }
   const data = await response.json();
-  const browse = browseUrlFromSelf(data?.self, key);
+  const browse = browseUrlFromSelf(data?.self, key, siteBase);
   return {
     ok: true,
     commentId: String(data?.id || ''),

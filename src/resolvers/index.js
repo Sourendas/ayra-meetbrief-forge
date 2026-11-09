@@ -31,6 +31,24 @@ function consentError(error) {
   return /401|unauthorized|not authorized|consent|authorization header/i.test(String(error?.message || error || ''));
 }
 
+/** Site browse host from Forge context or an explicit payload field. Never api.atlassian.com. */
+function siteBaseFrom(context, payload) {
+  const candidates = [payload?.siteUrl, context?.siteUrl];
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value) continue;
+    try {
+      const raw = value.startsWith('http') ? value : `https://${value}`;
+      const url = new URL(raw);
+      if (!url.hostname || url.hostname === 'api.atlassian.com') continue;
+      if (!/\.atlassian\.net$/i.test(url.hostname) && !url.hostname.includes('.')) continue;
+      return url.origin;
+    } catch {
+      /* try next */
+    }
+  }
+  return '';
+}
+
 /**
  * Issue panel and Confluence page: read the work item and related pages, then assemble the brief.
  * A missing read becomes a warning on the brief, not a fabricated status or URL.
@@ -39,6 +57,7 @@ export const handler = makeResolver({
   generateBrief: async ({ payload, context }) => {
     const body = payload || {};
     const warnings = [];
+    const siteBase = siteBaseFrom(context, body);
     const requestedKey = String(body.issueKey || '').trim();
     const contextKey = context?.extension?.issue?.key || '';
     const issueKey = normalizeIssueKey(requestedKey) || normalizeIssueKey(contextKey);
@@ -50,7 +69,7 @@ export const handler = makeResolver({
     let issueContext = null;
     if (issueKey) {
       try {
-        const fetched = await fetchIssueContext(issueKey, { auth: 'user' });
+        const fetched = await fetchIssueContext(issueKey, { auth: 'user', siteBase });
         if (fetched.ok) issueContext = fetched.issue;
         else warnings.push(fetched.message);
       } catch (error) {
@@ -165,6 +184,7 @@ export const handler = makeResolver({
   postOpenQuestions: async ({ payload, context }) => {
     const issueKey = normalizeIssueKey(payload?.issueKey) || normalizeIssueKey(context?.extension?.issue?.key);
     const entryId = String(payload?.historyEntryId || '');
+    const siteBase = siteBaseFrom(context, payload);
     if (!issueKey || !entryId) {
       return { status: 'error', error: 'Build a brief on a Jira work item first, then post its open questions.' };
     }
@@ -219,7 +239,7 @@ export const handler = makeResolver({
     const adf = openQuestionsCommentAdf({ ...entry, openQuestions: decision.questions }, issueKey);
     let posted;
     try {
-      posted = await postIssueComment(issueKey, adf);
+      posted = await postIssueComment(issueKey, adf, { siteBase });
     } catch (error) {
       await saveLedger(issueKey, { ...ledger, pending: null }).catch(() => {});
       await release();

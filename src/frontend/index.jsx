@@ -221,6 +221,7 @@ const App = () => {
   const [postedUrl, setPostedUrl] = useState('');
   const [postDone, setPostDone] = useState(false);
   const [postNote, setPostNote] = useState('');
+  const [siteUrl, setSiteUrl] = useState('');
 
   const build = async (overrides = {}, stillCurrent = () => true) => {
     const fields = {
@@ -247,6 +248,7 @@ const App = () => {
         issueKey: fields.issueKey.trim(),
         confluenceQuery: fields.confluenceQuery.trim(),
         spaceKey: fields.spaceKey.trim(),
+        siteUrl: fields.siteUrl || siteUrl || '',
       });
       if (!stillCurrent()) return;
       if (result?.status === 'error') {
@@ -291,6 +293,8 @@ const App = () => {
       try {
         const ctx = await view.getContext();
         key = ctx?.extension?.issue?.key || '';
+        const host = ctx?.siteUrl || '';
+        if (host) setSiteUrl(host);
       } catch {
         key = '';
       }
@@ -319,6 +323,7 @@ const App = () => {
       const result = await invoke('postOpenQuestions', {
         issueKey: brief.issue.key,
         historyEntryId,
+        siteUrl,
       });
       if (result?.status === 'success' || result?.status === 'already-posted') {
         setPostDone(true);
