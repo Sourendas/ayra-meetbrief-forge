@@ -4,11 +4,23 @@ import { assembleBriefFromInputs } from '../lib/brief.js';
 import {
   changesSincePrevious,
   historyEntryFromBrief,
+  markPending,
   markPosted,
   mergeHistory,
   openQuestionsCommentAdf,
+  postDecision,
+  recordPost,
+  seedLedgerFromHistory,
+  unpostedQuestions,
 } from '../lib/history.js';
-import { loadHistory, saveHistory } from '../lib/store.js';
+import {
+  acquirePostLock,
+  loadHistory,
+  loadLedger,
+  releasePostLock,
+  saveHistory,
+  saveLedger,
+} from '../lib/store.js';
 import { normalizeIssueKey, normalizeSpaceKey } from '../lib/text.js';
 
 // Named makeResolver, not `new Resolver()`. With "type": "module", Forge's
@@ -104,12 +116,17 @@ export const handler = makeResolver({
     let history = [];
     let historyEntryId = '';
     let historyWarning = '';
+    let unpostedCount = brief.openQuestions.length;
+    let lastCommentUrl = '';
     if (issueContext?.key) {
       try {
         const merged = mergeHistory(await loadHistory(issueContext.key), historyEntryFromBrief(brief));
         await saveHistory(issueContext.key, merged.history);
         history = merged.history;
         historyEntryId = merged.entry.id;
+        const ledger = seedLedgerFromHistory(await loadLedger(issueContext.key), merged.history);
+        unpostedCount = unpostedQuestions(merged.entry, ledger).length;
+        lastCommentUrl = merged.entry.commentUrl || ledger.posts[ledger.posts.length - 1]?.commentUrl || '';
       } catch (error) {
         console.error('brief history unavailable', error?.message || error);
         historyWarning = 'Brief history could not be saved this time. The brief itself is unaffected.';
@@ -122,6 +139,8 @@ export const handler = makeResolver({
       history,
       historyEntryId,
       historyWarning,
+      unpostedCount,
+      lastCommentUrl,
       changes: changesSincePrevious(history),
       context: {
         issueKey: issueKey || null,
@@ -158,24 +177,72 @@ export const handler = makeResolver({
     }
     const entry = history.find((item) => item.id === entryId);
     if (!entry) return { status: 'error', error: 'That brief is no longer in history. Rebuild it, then post.' };
-    if (entry.commentUrl) {
-      return { status: 'already-posted', commentUrl: entry.commentUrl, history, changes: changesSincePrevious(history) };
-    }
-    const adf = openQuestionsCommentAdf(entry, issueKey);
-    if (!adf) return { status: 'error', error: 'This brief has no open questions to post.' };
 
+    // Server-side guard, checked before Jira is called:
+    // 1. atomic per-issue lock (kvs FAIL_IF_EXISTS) so concurrent clicks cannot both post;
+    // 2. the per-issue posted ledger, re-read under the lock, so any brief whose questions
+    //    are already in a MeetBrief comment is skipped, whatever entry id the panel sends.
+    const skip = (decision) => {
+      const { action, ...skipped } = decision;
+      console.log(`postOpenQuestions skip ${issueKey} ${decision.status}`);
+      return { ...skipped, history, changes: changesSincePrevious(history) };
+    };
+    const lock = await acquirePostLock(issueKey, entryId);
+    if (lock === 'locked') {
+      return skip({ action: 'skip', status: 'in-progress', error: 'A post for this work item is already in progress. Wait a moment.' });
+    }
+    const release = async () => {
+      if (lock === 'acquired') await releasePostLock(issueKey).catch(() => {});
+    };
+
+    let ledger;
+    try {
+      ledger = seedLedgerFromHistory(await loadLedger(issueKey), await loadHistory(issueKey));
+    } catch (error) {
+      await release();
+      console.error('postOpenQuestions ledger read failed', error?.message || error);
+      return { status: 'error', error: 'Could not check whether these questions were already posted, so nothing was posted.' };
+    }
+    const decision = postDecision(entry, ledger);
+    if (decision.action === 'skip') {
+      await release();
+      return skip(decision);
+    }
+    try {
+      await saveLedger(issueKey, markPending(ledger, entryId));
+    } catch (error) {
+      await release();
+      console.error('postOpenQuestions ledger claim failed', error?.message || error);
+      return { status: 'error', error: 'Could not record the post, so nothing was posted.' };
+    }
+
+    const adf = openQuestionsCommentAdf({ ...entry, openQuestions: decision.questions }, issueKey);
     let posted;
     try {
       posted = await postIssueComment(issueKey, adf);
     } catch (error) {
+      await saveLedger(issueKey, { ...ledger, pending: null }).catch(() => {});
+      await release();
       if (consentError(error)) throw error;
       console.error('postOpenQuestions failed', error?.message || error);
       return { status: 'error', error: 'Jira did not accept the comment. Nothing was posted.' };
     }
-    if (!posted.ok) return { status: 'error', error: posted.message };
+    if (!posted.ok) {
+      await saveLedger(issueKey, { ...ledger, pending: null }).catch(() => {});
+      await release();
+      return { status: 'error', error: posted.message };
+    }
 
-    const updated = markPosted(history, entryId, posted);
     try {
+      await saveLedger(issueKey, recordPost(ledger, entryId, decision.questions, posted));
+    } catch (error) {
+      console.error('postOpenQuestions ledger write failed', error?.message || error);
+    }
+    await release();
+    let updated = markPosted(history, entryId, posted);
+    try {
+      // Re-read so a rebuild that ran meanwhile is not overwritten.
+      updated = markPosted(await loadHistory(issueKey), entryId, posted);
       await saveHistory(issueKey, updated);
     } catch (error) {
       console.error('postOpenQuestions history write failed', error?.message || error);
@@ -184,6 +251,7 @@ export const handler = makeResolver({
     return {
       status: 'success',
       commentUrl: posted.commentUrl,
+      postedCount: decision.questions.length,
       history: updated,
       changes: changesSincePrevious(updated),
     };
@@ -192,6 +260,6 @@ export const handler = makeResolver({
   ping: async () => ({
     status: 'ok',
     app: 'ayra-meetbrief-forge',
-    version: '0.3.0',
+    version: '0.3.1',
   }),
 });

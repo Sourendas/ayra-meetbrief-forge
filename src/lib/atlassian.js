@@ -18,6 +18,7 @@ import {
   originOf,
   stripHtml,
 } from './text.js';
+import { isMeetBriefComment } from './history.js';
 
 const JSON_HEADERS = { headers: { Accept: 'application/json' } };
 
@@ -82,7 +83,7 @@ async function requestProduct(product, path, auth) {
 
 function mapComment(comment, browseUrl) {
   const text = adfToText(comment?.body, 180);
-  if (!text) return null;
+  if (!text || isMeetBriefComment(text)) return null;
   const id = comment?.id;
   return {
     id: id || '',

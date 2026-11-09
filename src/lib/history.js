@@ -136,3 +136,95 @@ export function openQuestionsCommentAdf(entry, issueKey) {
     ],
   };
 }
+
+/*
+ * Posted ledger: one kvs record per work item (`brief-posted:KEY`), separate from history.
+ * generateBrief never writes it, so a rebuild cannot clobber a posted marker, and the guard
+ * covers every brief on the issue, not just the entry id the panel happens to hold.
+ */
+export const POST_PENDING_MS = 60000;
+export const COMMENT_MARKER = 'MeetBrief — open questions';
+
+export function postedKey(issueKey) {
+  const key = normalizeIssueKey(issueKey);
+  return key ? `brief-posted:${key}` : '';
+}
+
+export function normalizeQuestion(line) {
+  return String(line || '')
+    .toLowerCase()
+    .replace(/\(\d+ days? ago\)/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function sanitizeLedger(value) {
+  const ledger = value && typeof value === 'object' ? value : {};
+  return {
+    questions: Array.isArray(ledger.questions) ? ledger.questions.filter((q) => typeof q === 'string') : [],
+    posts: Array.isArray(ledger.posts) ? ledger.posts.filter((p) => p && typeof p.entryId === 'string') : [],
+    pending: ledger.pending && typeof ledger.pending.entryId === 'string' ? ledger.pending : null,
+  };
+}
+
+/** Questions on this entry that no MeetBrief comment on the issue has carried yet. */
+export function unpostedQuestions(entry, ledger) {
+  const seen = new Set(sanitizeLedger(ledger).questions);
+  return (entry?.openQuestions || []).filter((line) => line && !seen.has(normalizeQuestion(line)));
+}
+
+/**
+ * Decide before calling Jira. Returns { action: 'post', questions } or
+ * { action: 'skip', status, commentUrl, error }.
+ */
+export function postDecision(entry, ledger, now = new Date()) {
+  const clean = sanitizeLedger(ledger);
+  const prior = clean.posts.find((post) => post.entryId === entry.id);
+  const last = clean.posts[clean.posts.length - 1];
+  if (prior || entry.commentUrl) {
+    return { action: 'skip', status: 'already-posted', commentUrl: prior?.commentUrl || entry.commentUrl || '' };
+  }
+  if (clean.pending && now.getTime() - Date.parse(clean.pending.at || 0) < POST_PENDING_MS) {
+    return { action: 'skip', status: 'in-progress', error: 'A post for this work item is already in progress. Wait a moment.' };
+  }
+  const questions = unpostedQuestions(entry, clean);
+  if (!(entry.openQuestions || []).length) {
+    return { action: 'skip', status: 'error', error: 'This brief has no open questions to post.' };
+  }
+  if (!questions.length) {
+    return { action: 'skip', status: 'already-posted', commentUrl: last?.commentUrl || '' };
+  }
+  return { action: 'post', questions };
+}
+
+export function markPending(ledger, entryId, now = new Date()) {
+  return { ...sanitizeLedger(ledger), pending: { entryId, at: now.toISOString() } };
+}
+
+export function recordPost(ledger, entryId, questions, { commentId, commentUrl, now = new Date() }) {
+  const clean = sanitizeLedger(ledger);
+  const merged = new Set(clean.questions);
+  for (const line of questions) merged.add(normalizeQuestion(line));
+  return {
+    questions: [...merged].slice(-60),
+    posts: [...clean.posts, { entryId, commentId: String(commentId || ''), commentUrl: commentUrl || '', postedAt: now.toISOString() }].slice(-20),
+    pending: null,
+  };
+}
+
+/** MeetBrief's own comments are not meeting context; leaving them in would change the next brief. */
+export function isMeetBriefComment(text) {
+  return String(text || '').trim().startsWith(COMMENT_MARKER);
+}
+
+/** Fold posts recorded only on history entries (pre-ledger builds) into the ledger. */
+export function seedLedgerFromHistory(ledger, history) {
+  let clean = sanitizeLedger(ledger);
+  for (const entry of sanitizeHistory(history).slice().reverse()) {
+    if (!entry.commentId && !entry.commentUrl) continue;
+    if (clean.posts.some((post) => post.entryId === entry.id)) continue;
+    const pending = clean.pending;
+    clean = { ...recordPost(clean, entry.id, entry.openQuestions || [], { commentId: entry.commentId, commentUrl: entry.commentUrl, now: new Date(entry.postedAt || entry.generatedAt || Date.now()) }), pending };
+  }
+  return clean;
+}
