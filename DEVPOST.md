@@ -32,7 +32,7 @@ The discussion points are not only a seat template. They come from the work item
 
 Two Forge features carry the brief past the meeting:
 
-- **Post open questions to KEY.** One click adds the brief's open questions to the work item as a Jira comment, posted as the user (`write:jira-work`). Each brief posts once, and the history links to the comment.
+- **Post open questions to KEY.** One click adds the brief's open questions to the work item as a Jira comment, posted as the user (`write:jira-work`). A question already posted to that work item is never posted again, and the history links to the comment.
 - **Brief history.** The last five briefs on each work item are kept in Forge KVS (`storage:app`). At the next meeting, **Since the last brief** shows the status move ("To Do → In Progress since the brief on 2 Nov") and which questions were added or no longer apply. Only a summary is stored, never comment text or page excerpts.
 
 If Jira or Confluence declines the read, or nothing matches, the brief says so and keeps the seat template separate from workspace facts. It does not invent URLs or status.

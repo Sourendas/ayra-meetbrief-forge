@@ -49,7 +49,7 @@ The author's site `ayra-dev.atlassian.net` is private and is not a judge login. 
 - **Recent** — description excerpt, latest comments, parent, linked work, and up to three Confluence pages.
 - **Discussion** — prompts for the seat you picked, plus prompts built from the work item itself: its status (blocked, in review, in progress, done, to do), its type (bug, story, epic, task), its priority, and labels such as `security`, `regression`, `customer`, `release`, `tech-debt`, or `incident`. Linked work and matching Confluence pages are added when they come back.
 - **Open questions** — decisions still missing (owner, empty description, stale update, no agenda page, missing repro steps on a bug, missing acceptance criteria on a story, done but linked work still open).
-- **Post open questions to KEY** — one click adds the open questions to the work item as a Jira comment, posted as you. Each brief can be posted once, and the history links to the comment.
+- **Post open questions to KEY** — one click adds the open questions to the work item as a Jira comment, posted as you. A question already in a MeetBrief comment on that work item is never posted again (server-side check plus a per-issue lock), and the history links to the comment. MeetBrief's own comments are left out of later briefs.
 - **Brief history** — the last five briefs on that work item (seat, status, objective, question count) are kept in Forge KVS. **Since the last brief** lists status moves and questions that were added or no longer apply. Only that summary is stored. Comment text, descriptions, and page excerpts are not.
 - **Sources** — browse and page URLs only. If a read fails, the panel says so and does not invent a link.
 
