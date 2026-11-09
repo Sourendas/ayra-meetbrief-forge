@@ -160,6 +160,10 @@ app:
 permissions:
   scopes:
     - read:jira-work
+    # write:jira-work is used only by the "Post open questions" button (one comment, as the user).
+    - write:jira-work
+    # storage:app keeps the last 5 brief summaries per work item in Forge KVS.
+    - storage:app
     - read:confluence-content.summary
     - read:confluence-content.permission
     - search:confluence
