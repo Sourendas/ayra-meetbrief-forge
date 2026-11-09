@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assembleBriefFromInputs } from './brief.js';
 import { mapIssue, mapSearchResults } from './atlassian.js';
+import { browseUrlFromSelf } from './text.js';
 import {
   adfToText,
   cqlPhrase,
@@ -184,4 +185,57 @@ test('missing workspace context stays honest', () => {
   assert.ok(brief.gaps.some((line) => line.includes('403')));
   assert.ok(brief.openQuestions.length > 0);
   assert.equal(brief.sources.length, 0);
+});
+
+test('browseUrlFromSelf prefers site base and never emits api.atlassian.com/browse', () => {
+  assert.equal(
+    browseUrlFromSelf(
+      'https://api.atlassian.com/ex/jira/cloud-id/rest/api/3/issue/10000',
+      'KAN-1',
+      'https://ayra-dev.atlassian.net'
+    ),
+    'https://ayra-dev.atlassian.net/browse/KAN-1'
+  );
+  assert.equal(
+    browseUrlFromSelf(
+      'https://api.atlassian.com/ex/jira/cloud-id/rest/api/3/issue/10000',
+      'KAN-1'
+    ),
+    ''
+  );
+  assert.equal(
+    browseUrlFromSelf(
+      'https://ayra-dev.atlassian.net/rest/api/3/issue/10000',
+      'KAN-1'
+    ),
+    'https://ayra-dev.atlassian.net/browse/KAN-1'
+  );
+  assert.equal(
+    browseUrlFromSelf(
+      'https://api.atlassian.com/ex/jira/cloud-id/rest/api/3/issue/10000/comment/9',
+      'KAN-1',
+      'https://ayra-dev.atlassian.net/'
+    ),
+    'https://ayra-dev.atlassian.net/browse/KAN-1'
+  );
+});
+
+test('mapIssue uses siteBase when self is the Forge API proxy host', () => {
+  const issue = mapIssue(
+    {
+      key: 'KAN-1',
+      self: 'https://api.atlassian.com/ex/jira/cloud-id/rest/api/3/issue/10000',
+      fields: {
+        summary: 'Stakeholder sync — Q4 roadmap',
+        status: { name: 'In Progress' },
+        issuetype: { name: 'Task' },
+        priority: { name: 'Medium' },
+        comment: { comments: [] },
+        issuelinks: [],
+        labels: [],
+      },
+    },
+    'https://ayra-dev.atlassian.net'
+  );
+  assert.equal(issue.url, 'https://ayra-dev.atlassian.net/browse/KAN-1');
 });

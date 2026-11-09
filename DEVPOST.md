@@ -32,7 +32,7 @@ The discussion points are not only a seat template. They come from the work item
 
 Two Forge features carry the brief past the meeting:
 
-- **Post open questions to KEY.** One click adds the brief's open questions to the work item as a Jira comment, posted as the user (`write:jira-work`). A question already posted to that work item is never posted again, and the history links to the comment.
+- **Post open questions to KEY.** One click adds the brief's open questions to the work item as a Jira comment, posted as the user (`write:jira-work`). Already-posted questions are skipped (server-side ledger + per-issue lock), so a rebuild does not spam the issue. New questions from a later seat can still post. MeetBrief's own comments are filtered out of later briefs.
 - **Brief history.** The last five briefs on each work item are kept in Forge KVS (`storage:app`). At the next meeting, **Since the last brief** shows the status move ("To Do → In Progress since the brief on 2 Nov") and which questions were added or no longer apply. Only a summary is stored, never comment text or page excerpts.
 
 If Jira or Confluence declines the read, or nothing matches, the brief says so and keeps the seat template separate from workspace facts. It does not invent URLs or status.
@@ -41,24 +41,26 @@ The same flow is a Rovo agent. Three actions gather an issue by key, search Conf
 
 ## Impact: one before/after
 
-`KAN-7 Checkout times out` is a bug: *In Progress*, *High* priority, labelled `customer`, nobody assigned.
+Screenshots and the demo use **KAN-1** on the author site (`Stakeholder sync — Q4 roadmap`: *In Progress*, *Task*, *Medium*, unassigned).
 
-- **Before:** the lead skims the comments, hunts for the runbook, and opens with "where are we on this?". The meeting turns into a recap. The owner and the repro steps stay in someone's notes.
-- **After:** the panel already shows status, priority, the latest comments, and the matching page. The discussion points come from the issue ("agree who reproduces it and who verifies the fix", "agree what the customer hears next and who tells them"), and so do the open questions ("Who owns this work item?", "Are the steps to reproduce KAN-7 written down?"). One click puts those questions on KAN-7. At the next sync the history shows what moved.
+- **Before:** the lead opens KAN-1 minutes before the Thu 11:00 stakeholder sync, scrolls an empty description, and walks in with "where are we on this?". Owner, outcome, and agenda live in someone's notes.
+- **After:** the MeetBrief panel already shows Snapshot (`In Progress · Task · Medium · Unassigned`) and issue-aware discussion ("KAN-1 is In Progress: ask what is left and what would stop it landing this week", "confirm the definition of done fits one owner's week"). Open questions name the gaps ("Who owns this work item walking into the meeting?", "What is the single outcome you want from this meeting?", "The description is empty. What should the room treat as the source of truth?"). One click posts those questions to KAN-1. Rebuild shows **Since the last brief** and skips questions already in a MeetBrief comment.
 
 The decision it improves: whether the meeting spends its time on the open decision (owner, date, scope, blocker) or on reading status aloud. MeetBrief does not claim a time-saved number. What it changes is where the open questions end up: on the work item.
+
+When a matching Confluence page exists, Sources links to it. When search returns no pages, the brief says so instead of inventing a link.
 
 ## Tech
 
 - Atlassian Forge, UI Kit, Node.js 22
 - Jira issue panel and Confluence global page
 - Jira REST reads (`read:jira-work`) and Confluence search (`search:confluence`, content summary)
-- Jira write-back: one comment per brief, as the user, only on click (`write:jira-work`)
+- Jira write-back: open questions as a comment, as the user, only on button click (`write:jira-work`)
 - Forge KVS (`@forge/kvs`, `storage:app`): brief history per work item, deduped, last five kept
 - Rovo agent and Forge actions
 - A small template assembler in the app. No external model, no paid search API, no secrets in the repository
 
-The earlier web prototype used Tavily. This submission does not. It uses the team’s own Jira and Confluence data.
+The earlier web prototype used Tavily. This submission does not. It uses the team's own Jira and Confluence data.
 
 ## Category
 
@@ -74,7 +76,7 @@ Software Teams
 
 ## Installation for judges
 
-**Quick path:** open the Distribution Sharing install link in the submission, choose your own Atlassian Cloud site, install for Jira (and Confluence), approve the scopes, then open any work item and the **MeetBrief** panel. Build once, change the seat or the status, and rebuild to see **Brief history**. Click **Post open questions to KEY** to see the write-back.
+**Quick path:** open the Distribution Sharing install link in the submission. It installs the **production** build that includes brief history and write-back (not an older build without those scopes). Choose your own Atlassian Cloud site, install for Jira (and Confluence), and **approve `write:jira-work` and `storage:app`** when prompted (plus the read/search scopes). Write-back runs only when someone clicks **Post open questions**. Existing installs of an older MeetBrief version must approve an upgrade before history and write-back appear. Then open any work item and the **MeetBrief** panel. Build once, change the seat or the status, and rebuild to see **Brief history**. Click **Post open questions to KEY** to see the write-back.
 
 **From source:**
 
@@ -83,11 +85,11 @@ Software Teams
 3. Install the Forge CLI and `forge login` with a Forge-scoped API token.
 4. The app id in `manifest.yml` belongs to the author's registered app.
 5. On a fork, run `forge register` first (this app id belongs to the author). Then `forge deploy`, then install on a cloud site for both Jira and Confluence (`forge install`), or use `forge install --demo-site`.
-7. Jira: open a work item and use the MeetBrief panel.
-8. Confluence: Apps → MeetBrief (route `meetbrief`).
-9. Rovo: Agents → MeetBrief, and ask for a real issue key, for example `Brief me on ABC-123`.
+6. Jira: open a work item and use the MeetBrief panel.
+7. Confluence: Apps → MeetBrief (route `meetbrief`).
+8. Rovo: Agents → MeetBrief, and ask for a real issue key, for example `Brief me on ABC-123`.
 
-A development install already exists on `https://ayra-dev.atlassian.net` for the author’s demo. That site is not a public judge login.
+A development install already exists on `https://ayra-dev.atlassian.net` for the author's demo. That site is not a public judge login.
 
 There is no cost to run the brief. No API keys are required for the Forge path.
 

@@ -26,19 +26,19 @@ This is the Forge app for [Codegeist 2026](https://codegeist2026.devpost.com/). 
 
 **Decision it improves:** whether the room spends its time on the open decision (owner, date, scope, blocker) or on re-reading status out loud. MeetBrief puts the open questions first and turns them into a Jira comment, so the answers end up on the work item.
 
-**Before / after, one concrete case.** A bug, `KAN-7 Checkout times out`, is *In Progress*, *High* priority, labelled `customer`, and unassigned.
+**Before / after, one concrete case (matches screenshots/demo).** `KAN-1 Stakeholder sync — Q4 roadmap` is a *Task*: *In Progress*, *Medium* priority, unassigned.
 
-- *Before:* the lead opens the issue, scrolls the comments, searches Confluence for the runbook, and walks in with "where are we on this?". The meeting ends with a recap, and the owner and repro steps stay in someone's notes.
-- *After:* the MeetBrief panel already shows status, priority, the last comments, and the matching page. The discussion points come from the issue itself ("It is a bug: agree who reproduces it and who verifies the fix", "Customer-facing: agree what the customer hears next and who tells them") along with the open questions ("Who owns this work item?", "Are the steps to reproduce KAN-7 written down?"). One click posts those questions to KAN-7. At the next sync the panel's history says "Status moved To Do → In Progress since the brief on 2 Nov" and how many questions no longer apply.
+- *Before:* the lead opens KAN-1 minutes before the Thu 11:00 stakeholder sync, finds an empty description, and walks in with "where are we on this?". Owner, outcome, and agenda stay in someone's notes.
+- *After:* the MeetBrief panel already shows Snapshot (`In Progress · Task · Medium · Unassigned`) and issue-aware discussion ("KAN-1 is In Progress: ask what is left and what would stop it landing this week", "confirm the definition of done fits one owner's week") plus open questions ("Who owns this work item walking into the meeting?", "What is the single outcome you want from this meeting?"). One click posts those questions to KAN-1. Rebuild shows **Since the last brief** and skips questions already in a MeetBrief comment. When Confluence has a matching page, Sources links to it; when search returns nothing, the brief says so.
 
 MeetBrief does not measure time saved and does not claim a number. What it changes is where the open questions live: on the work item, in Jira, not in a private doc.
 
 ## For judges: install
 
-1. Use the MeetBrief **Distribution Sharing** install link from the Devpost submission. It installs the **production** app.
+1. Use the MeetBrief **Distribution Sharing** install link from the Devpost submission. It installs the **production** build with brief history and write-back (not an older build without those scopes).
 2. Pick your own Atlassian Cloud site (a free [Cloud Developer site](https://developer.atlassian.com/platform/forge/getting-started/#create-an-atlassian-cloud-developer-site) works) and install for **Jira**. Install for **Confluence** too (open the link again if it asks for one product at a time). Confluence is optional and adds page search and the Confluence page.
-3. Approve the scopes when Atlassian asks for them. MeetBrief reads Jira and Confluence as you, keeps its brief history in Forge storage, and writes to Jira only when you click **Post open questions**.
-4. Open any Jira work item, then the **MeetBrief** panel. Rebuild once with a different seat, or after changing the status, to see **Brief history** and **Since the last brief**. Click **Post open questions to KEY** to add the comment.
+3. Approve the scopes when Atlassian asks for them, including **`write:jira-work`** and **`storage:app`**. MeetBrief reads Jira and Confluence as you, keeps brief history in Forge storage, and writes to Jira only when you click **Post open questions**. Existing installs of an older version must approve an upgrade before history and write-back appear.
+4. Open any Jira work item (the author demo uses **KAN-1**), then the **MeetBrief** panel. Rebuild once with a different seat, or after changing the status, to see **Brief history** and **Since the last brief**. Click **Post open questions to KEY** to add the comment; already-posted questions are skipped.
 5. Rovo: **Agents → MeetBrief**, `Brief me on KEY`.
 
 The author's site `ayra-dev.atlassian.net` is private and is not a judge login. If the sharing link does not work for you, the source install below (`forge register` on a fork) reproduces the same app.
