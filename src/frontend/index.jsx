@@ -52,7 +52,54 @@ function fieldValue(event) {
   return event?.target?.value ?? '';
 }
 
-const BriefView = ({ brief }) => (
+const formatStamp = (iso) => {
+  const value = String(iso || '');
+  return value ? `${value.slice(0, 10)} ${value.slice(11, 16)} UTC` : '';
+};
+
+const HistoryView = ({ history, changes }) => {
+  if (!history?.length) return null;
+  return (
+    <Stack space="space.100">
+      <Heading size="small">Brief history on this work item</Heading>
+      {changes?.length ? (
+        <SectionMessage appearance="information" title="Since the last brief">
+          <Stack space="space.050">
+            {changes.map((line) => (
+              <Text key={line}>{line}</Text>
+            ))}
+          </Stack>
+        </SectionMessage>
+      ) : null}
+      <List type="unordered">
+        {history.map((entry, index) => (
+          <ListItem key={entry.id}>
+            <Inline space="space.100" alignBlock="center">
+              <Text>{formatStamp(entry.generatedAt)}</Text>
+              {index === 0 ? <Lozenge appearance="success">Latest</Lozenge> : null}
+              <Lozenge appearance="new">{entry.seatLabel}</Lozenge>
+              {entry.status ? (
+                <Lozenge appearance={statusAppearance(entry.status)}>{entry.status}</Lozenge>
+              ) : null}
+              <Text>
+                {entry.openQuestions?.length || 0} open question
+                {(entry.openQuestions?.length || 0) === 1 ? '' : 's'}
+                {entry.objective ? ` · ${entry.objective}` : ''}
+              </Text>
+              {entry.commentUrl ? (
+                <Link href={entry.commentUrl} openNewTab>
+                  Posted to Jira
+                </Link>
+              ) : null}
+            </Inline>
+          </ListItem>
+        ))}
+      </List>
+    </Stack>
+  );
+};
+
+const BriefView = ({ brief, writeBack }) => (
   <Stack space="space.200">
     <Inline space="space.100" alignBlock="center">
       <Heading size="small">Snapshot</Heading>
@@ -124,6 +171,7 @@ const BriefView = ({ brief }) => (
     ) : (
       <Text>No open questions. Add an objective if you still need a decision from the room.</Text>
     )}
+    {writeBack}
 
     <Heading size="small">Sources</Heading>
     {brief.sources.length ? (
@@ -164,6 +212,13 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [brief, setBrief] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [changes, setChanges] = useState([]);
+  const [historyEntryId, setHistoryEntryId] = useState('');
+  const [historyWarning, setHistoryWarning] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState(null);
+  const [postedUrl, setPostedUrl] = useState('');
 
   const build = async (overrides = {}, stillCurrent = () => true) => {
     const fields = {
@@ -197,6 +252,13 @@ const App = () => {
         setError(result.error || 'Could not build a brief.');
       } else {
         setBrief(result.brief);
+        setHistory(result.history || []);
+        setChanges(result.changes || []);
+        setHistoryEntryId(result.historyEntryId || '');
+        setHistoryWarning(result.historyWarning || '');
+        setPostError(null);
+        const latest = (result.history || []).find((entry) => entry.id === result.historyEntryId);
+        setPostedUrl(latest?.commentUrl || '');
         if (result.brief?.subject) {
           setSubject((current) =>
             current.trim().toUpperCase() === fields.issueKey.trim().toUpperCase()
@@ -242,6 +304,57 @@ const App = () => {
     // Mount once: the issue panel should open onto a brief for the current work item.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const postOpenQuestions = async () => {
+    if (!brief?.issue?.key || !historyEntryId) return;
+    setPosting(true);
+    setPostError(null);
+    try {
+      const result = await invoke('postOpenQuestions', {
+        issueKey: brief.issue.key,
+        historyEntryId,
+      });
+      if (result?.status === 'success' || result?.status === 'already-posted') {
+        setPostedUrl(result.commentUrl || '');
+        setHistory(result.history || history);
+        setChanges(result.changes || changes);
+      } else {
+        setPostError(result?.error || 'Nothing was posted.');
+      }
+    } catch (invokeError) {
+      setPostError(
+        invokeError?.message ||
+          'Jira did not accept the comment. If a permission prompt appeared, accept it and try again.'
+      );
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  const canPost = Boolean(brief?.issue?.key && historyEntryId && brief?.openQuestions?.length);
+  const writeBack = canPost ? (
+    <Stack space="space.100">
+      {postedUrl ? (
+        <SectionMessage appearance="success" title={`Posted to ${brief.issue.key}`}>
+          <Link href={postedUrl} openNewTab>
+            Open the comment
+          </Link>
+        </SectionMessage>
+      ) : (
+        <Inline space="space.100" alignBlock="center">
+          <Button appearance="default" onClick={postOpenQuestions} isDisabled={posting || loading}>
+            {posting ? 'Posting…' : `Post open questions to ${brief.issue.key}`}
+          </Button>
+          <Text>Adds one comment as you, so answers land on the work item.</Text>
+        </Inline>
+      )}
+      {postError ? (
+        <SectionMessage appearance="error" title="Not posted">
+          {postError}
+        </SectionMessage>
+      ) : null}
+    </Stack>
+  ) : null;
 
   const canBuild = Boolean(subject.trim() || issueKey.trim() || confluenceQuery.trim());
 
@@ -337,7 +450,9 @@ const App = () => {
           </SectionMessage>
         ) : null}
 
-        {brief ? <BriefView brief={brief} /> : null}
+        {brief ? <BriefView brief={brief} writeBack={writeBack} /> : null}
+        {brief && historyWarning ? <Text>{historyWarning}</Text> : null}
+        {brief ? <HistoryView history={history} changes={changes} /> : null}
 
         {!brief && !loading && surface !== 'loading' ? (
           <Text>
